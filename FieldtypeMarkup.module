@@ -1,0 +1,235 @@
+<?php
+
+/**
+ * ProcessWire Fieldtype which outputs markup as an Inputfield in the page editor.
+ *
+ * @author kixe (Christoph Thelen) 2016-06-20
+ * @license Licensed under GNU/GPL v3
+ * @link http://processwire.com/talk
+ *
+ * ProcessWire 3.x 
+ * Copyright (C) 2016 by Ryan Cramer 
+ * Licensed under GNU/GPL v2, see LICENSE.TXT
+ * 
+ * http://processwire.com
+ * @version 1.0.5
+ * @since 1.0.1 formatted markup available as field value - 2016-07-29
+ * @since 1.0.2 added wirePopulateStringTags() - 2017-07-11
+ * @since 1.0.3 convert nbsp and other UTF-8 encoded stuff to simple spaces 217-07-27
+ * @since 1.0.4 allow to hook unformatted and formatted value 2018-01-30
+ * @since 1.0.5 readded return of sleepValue() wakeupValue() for better access 2018-02-13
+ * @since 1.0.6 optional output formatting for page properties as string tags {created} and {modified} 2018-04-14
+ *
+ */
+
+class FieldtypeMarkup extends Fieldtype {
+
+	public static function getModuleInfo() {
+		return array(
+			'title' => 'Markup',
+			'version' => 106,
+			'summary' => 'Fieldtype renders runtime markup. Define output in field settings. Overwrite via template if needed. Include Page related values via {stringTags}. Textformatters applicable. Useful for concatenation of properties and field values, wrapped in any markup. Output hookable.',
+			'author' => 'kixe',
+			'icon' => 'code'
+			);
+	}
+
+	protected $languageSupport = false;
+
+	public function init() {
+		$this->set('textformatters', '');
+		$this->set('dateFormat', '');
+		if ($this->modules->isInstalled('LanguageSupport')) {
+			$this->languageSupport = $this->modules->get('LanguageSupport');
+			foreach($this->languageSupport->otherLanguagePageIDs as $languageID) $this->set("dateFormat$languageID", '');
+		}
+		$this->addHookAfter('ProcessField::buildEditForm', $this, 'hookAfterBuildEditForm');
+		$this->addHookBefore('ProcessField::buildEditFormContext', function($event) {
+			$form = $event->arguments[0];
+			$form->get('description')->label = "Markup";
+			$event->arguments(0 , $form);
+		});
+	}
+
+	public function hookAfterBuildEditForm($event) {
+		if (!$this->input->get->id) return;
+		$fieldtype = $this->fields->get((int) $this->input->get->id)->type;
+		if ($fieldtype instanceof FieldtypeMarkup) {
+			$form = $event->return;
+			$form->get('field_label')->description = 'This is the label that appears above the Markup. If left blank, *nothing* will be used instead.';
+
+			$form->get('description')->label = 'Markup';		
+			$form->get('description')->description = 'This is the Markup that appears in the page editor instead of an Inputfield. Use plain Text, HTML or any other Markup. Optionally enable Textformatters under the details tab in the field settings. Insert page properties surrounded with curled brackets.';
+			$form->get('description')->collapsed = Inputfield::collapsedNo;
+			$form->remove('notes');
+			$event->return = $form;
+		}
+	}
+
+	public function getInputfield(Page $page, Field $field) {
+		$inputfield = wire('modules')->get('InputfieldMarkup');
+		$inputfield->description = null;
+		// get raw value
+		$value = $this->loadPageField($page, $field);
+		// we want the formatted value here
+		$inputfield->markupText = $this->formatValue($page, $field, $value);
+		if (!$field->label && $field->collapsed == 1) {
+			$inputfield->icon = $field->icon? $field->icon:'info-circle';
+			$field->label = ' ';
+		}
+		$this->addHookAfter('InputfieldMarkup::getConfigInputfields', function($event) {
+			$inputfields = $event->return;
+			$options = array(0,1,4); // open, closed, hidden
+			$collapsed = $inputfields->get('collapsed');
+			$collapsed->notes = "If set to 'Closed' and no 'Label' is assigned, an Icon will appear to toggle visiblity. Set icon under 'Advanced' Tab. Default-icon: 'info-circle'";
+			foreach (array_keys($collapsed->getOptions()) as $option) {
+				if (in_array($option, $options)) continue;
+				$collapsed->removeOption($option);
+			}
+			// 'visibility' is wrapper for 'showIf' and 'collapsed'	
+			$skips = array('placeholder', 'stripTags', 'pattern');
+			foreach($skips as $name) $inputfields->remove($name); 
+   			$event->return = $inputfields;
+    	});
+		return $inputfield;
+	}
+
+	/**
+	 * Generate value at runtime and pull value from field description rather than loading from DB
+	 * hook in here to modify the unformatted value @see ___formatValue()
+	 */
+	public function ___loadPageField(Page $page, Field $field) {
+		return $field->description; 
+	}
+
+	/**
+	 * Format the given value for output and return a string of the formatted value
+	 * Page instances and Inputfield call upon this method to do any necessary formatting of a value in preparation for output.
+	 * hook in here to modify the formatted value pulled from the fields description @see ___loadPageField()
+	 */
+	public function ___formatValue(Page $page, Field $field, $value) {
+
+		if (!$value) return null;
+		$value = (string) $value;
+
+		if(is_array($field->textformatters) && count($field->textformatters)) {
+			foreach($field->textformatters as $className) {
+				if(!$t = $this->wire('modules')->get($className)) continue; 
+				$t->formatValue($page, $field, $value); 
+			}
+		}
+
+		// format created and modified @see wireDate() strftime() date()
+		$langID = ($this->languageSupport && $this->wire('user')->language->isDefault() == false)? $this->wire('user')->language->id : '';
+		if (strpos($value, 'ed}') && !empty($field->{"dateFormat$langID"})) {
+			$created = wireDate($field->{"dateFormat$langID"}, $page->created);
+			$modified = wireDate($field->{"dateFormat$langID"}, $page->modified);
+			$value = str_replace(array('{created}','{modified}'), array($created, $modified), $value);
+		}
+
+		// replace string tags {field}
+		$out = wirePopulateStringTags($value, $page);
+		return trim(preg_replace('/[\xC2\xA0\t\n\r\0\x0B]/u',' ', $out));
+	}
+
+	public function ___wakeupValue(Page $page, Field $field, $value) {
+		// prevent render value (description) twice in page editor
+		if ($page->id == wire('input')->get->id) return null;
+		return $value; // API accessible? getUnformatted?
+		// return null;
+
+	}
+
+	public function sanitizeValue(Page $page, Field $field, $value) {
+		return $value; 
+	}
+
+	/**
+	 * The following functions are defined as replacements to keep this fieldtype out of the DB
+	 *
+	 */
+	public function ___sleepValue(Page $page, Field $field, $value) {
+		return $value;
+	}
+
+	public function getLoadQuery(Field $field, DatabaseQuerySelect $query) {
+		// prevent loading from DB
+		return $query; 
+	}
+
+	public function ___savePageField(Page $page, Field $field) {
+		// prevent saving of field
+		return true;
+	}
+
+	public function ___deletePageField(Page $page, Field $field) {
+		// deleting of page field not necessary
+		return true; 
+	}
+
+	public function ___deleteField(Field $field) {
+		// deleting of field not necessary
+		return true; 
+	}
+
+	public function getDatabaseSchema(Field $field) {
+		// no database schema necessary
+		return array();
+	}
+
+	public function ___createField(Field $field) {
+		// nothing necessary to create the field
+		return true; 
+	}
+
+	public function getMatchQuery($query, $table, $subfield, $operator, $value) {
+		// we don't allow this field to be queried
+		throw new WireException("Field '{$query->field->name}' is runtime and not queryable");
+	}
+	
+	public function ___getCompatibleFieldtypes(Field $field) {
+		// no fieldtypes are compatible
+		return new Fieldtypes();
+	}
+
+	public function getLoadQueryAutojoin(Field $field, DatabaseQuerySelect $query) {
+		// we don't allow this field to be autojoined
+		return null;
+	}
+
+	public function ___getConfigInputfields(Field $field) {
+
+		$inputfields = parent::___getConfigInputfields($field);
+		$f = $this->modules->get('InputfieldAsmSelect');
+		$f->attr('id+name', 'textformatters');
+		$f->attr('value', $field->textformatters); 
+		$f->label = $this->_('Text Formatters');
+		foreach($this->modules->find("className^=Textformatter") as $textformatter) {
+			$info = $textformatter->getModuleInfo();
+			$f->addOption($textformatter->className(), "$info[title]");
+		}
+		$f->description = $this->_('Select the format that your Markup Text is in, or the formatters that you want to be applied to it, in the order you want them applied.'); 
+		$f->notes = $this->_('If your Markup Text is plain HTML, you may not want to select any Text Formatters.');
+		$f->columnWidth = 50;
+		$inputfields->add($f);
+
+		$f = $this->modules->get('InputfieldText');
+		$f->attr('id+name', 'dateFormat');
+		$f->attr('value', $field->dateFormat);
+		$f->attr('class','InputfieldMaxWidth');
+		if ($this->languageSupport) {
+			$f->useLanguages = true;
+			foreach($this->languageSupport->otherLanguagePageIDs as $languageID) $f->attr("value$languageID", $field->{"dateFormat$languageID"});
+		}
+		$f->attr('size', 25);
+		$f->set('stripTags', true);
+		$f->label = $this->_('DateTime Output Format');
+		$f->description = $this->_('DateTime format for replacement of string tags {created} and {modified}');
+		$f->notes = $this->_('This setting does not affect the output format for DateTime page fields. In this case, the field-based output format is used.');
+		$f->columnWidth = 50;
+		$inputfields->add($f);
+
+		return $inputfields;
+	}
+}
+
