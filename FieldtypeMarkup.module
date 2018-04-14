@@ -26,9 +26,9 @@ class FieldtypeMarkup extends Fieldtype {
 
 	public static function getModuleInfo() {
 		return array(
-			'title' => 'Markup',
+			'title' => __('Fieldtype Markup'),
 			'version' => 106,
-			'summary' => 'Fieldtype renders runtime markup. Define output in field settings. Overwrite via template if needed. Include Page related values via {stringTags}. Textformatters applicable. Useful for concatenation of properties and field values, wrapped in any markup. Output hookable.',
+			'summary' => __('Fieldtype renders runtime markup. Define output in field settings. Overwrite via template if needed. Include Page related values via {stringTags}. Textformatters applicable. Useful for concatenation of properties and field values, wrapped in any markup. Output hookable.'),
 			'author' => 'kixe',
 			'icon' => 'code'
 			);
@@ -56,10 +56,10 @@ class FieldtypeMarkup extends Fieldtype {
 		$fieldtype = $this->fields->get((int) $this->input->get->id)->type;
 		if ($fieldtype instanceof FieldtypeMarkup) {
 			$form = $event->return;
-			$form->get('field_label')->description = 'This is the label that appears above the Markup. If left blank, *nothing* will be used instead.';
+			$form->get('field_label')->description = $this->_('This is the label that appears above the Markup. If left blank, *nothing* will be used instead.');
 
 			$form->get('description')->label = 'Markup';		
-			$form->get('description')->description = 'This is the Markup that appears in the page editor instead of an Inputfield. Use plain Text, HTML or any other Markup. Optionally enable Textformatters under the details tab in the field settings. Insert page properties surrounded with curled brackets.';
+			$form->get('description')->description = $this->_('This is the Markup that appears in the page editor instead of an Inputfield. Use plain Text, HTML or any other Markup. Optionally enable Textformatters under the details tab in the field settings. Insert page properties surrounded with curled brackets.');
 			$form->get('description')->collapsed = Inputfield::collapsedNo;
 			$form->remove('notes');
 			$event->return = $form;
@@ -81,7 +81,7 @@ class FieldtypeMarkup extends Fieldtype {
 			$inputfields = $event->return;
 			$options = array(0,1,4); // open, closed, hidden
 			$collapsed = $inputfields->get('collapsed');
-			$collapsed->notes = "If set to 'Closed' and no 'Label' is assigned, an Icon will appear to toggle visiblity. Set icon under 'Advanced' Tab. Default-icon: 'info-circle'";
+			$collapsed->notes = $this->_("If set to 'Closed' and no 'Label' is assigned, an Icon will appear to toggle visiblity. Set icon under 'Advanced' Tab. Default-icon: 'info-circle'");
 			foreach (array_keys($collapsed->getOptions()) as $option) {
 				if (in_array($option, $options)) continue;
 				$collapsed->removeOption($option);
