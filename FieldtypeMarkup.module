@@ -19,6 +19,7 @@
  * @since 1.0.4 allow to hook unformatted and formatted value 2018-01-30
  * @since 1.0.5 readded return of sleepValue() wakeupValue() for better access 2018-02-13
  * @since 1.0.6 optional output formatting for page properties as string tags {created} and {modified} 2018-04-14
+ * @since 1.0.7 fixed bug replacing description Label other fieldtypes 2018-04-15
  *
  */
 
@@ -27,7 +28,7 @@ class FieldtypeMarkup extends Fieldtype {
 	public static function getModuleInfo() {
 		return array(
 			'title' => __('Fieldtype Markup'),
-			'version' => 106,
+			'version' => 107,
 			'summary' => __('Fieldtype renders runtime markup. Define output in field settings. Overwrite via template if needed. Include Page related values via {stringTags}. Textformatters applicable. Useful for concatenation of properties and field values, wrapped in any markup. Output hookable.'),
 			'author' => 'kixe',
 			'icon' => 'code'
@@ -45,9 +46,13 @@ class FieldtypeMarkup extends Fieldtype {
 		}
 		$this->addHookAfter('ProcessField::buildEditForm', $this, 'hookAfterBuildEditForm');
 		$this->addHookBefore('ProcessField::buildEditFormContext', function($event) {
-			$form = $event->arguments[0];
-			$form->get('description')->label = "Markup";
-			$event->arguments(0 , $form);
+			if (!empty($this->input->get->id) && $field = $this->wire('fields')->get($this->input->get->id)) {
+				if (isset($field->type) && $field->type->name == 'FieldtypeMarkup') {
+					$form = $event->arguments[0];
+					$form->get('description')->label = "Markup";
+					$event->arguments(0 , $form);
+				}
+			}
 		});
 	}
 
