@@ -12,7 +12,7 @@
  * Licensed under GNU/GPL v2, see LICENSE.TXT
  * 
  * http://processwire.com
- * @version 1.0.8
+ * @version 1.0.9
  * @since 1.0.1 formatted markup available as field value - 2016-07-29
  * @since 1.0.2 added wirePopulateStringTags() - 2017-07-11
  * @since 1.0.3 convert nbsp and other UTF-8 encoded stuff to simple spaces 217-07-27
@@ -21,6 +21,7 @@
  * @since 1.0.6 optional output formatting for page properties as string tags {created} and {modified} 2018-04-14
  * @since 1.0.7 fixed bug replacing description Label other fieldtypes 2018-04-15
  * @since 1.0.8 displaying multilanguage description as description 2018-04-15
+ * @since 1.0.9 added fallback to default language markup (description) 2018-08-03
  *
  */
 
@@ -29,7 +30,7 @@ class FieldtypeMarkup extends Fieldtype {
 	public static function getModuleInfo() {
 		return array(
 			'title' => __('Fieldtype Markup'),
-			'version' => 108,
+			'version' => 109,
 			'summary' => __('Fieldtype renders runtime markup. Define output in field settings. Overwrite via template if needed. Include Page related values via {stringTags}. Textformatters applicable. Useful for concatenation of properties and field values, wrapped in any markup. Output hookable.'),
 			'author' => 'kixe',
 			'icon' => 'code'
@@ -107,6 +108,7 @@ class FieldtypeMarkup extends Fieldtype {
 	public function ___loadPageField(Page $page, Field $field) {
 		$langID = ($this->languageSupport && $this->wire('user')->language->isDefault() == false)? $this->wire('user')->language->id : '';
 		$value = $field->{"description$langID"};
+		if (!$value && $langID && $field->description) $value = $field->description; // fallback to default language
 		unset($field->{"description$langID"});
 		return $value;
 	}
