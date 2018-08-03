@@ -33,7 +33,8 @@ class FieldtypeMarkup extends Fieldtype {
 			'version' => 109,
 			'summary' => __('Fieldtype renders runtime markup. Define output in field settings. Overwrite via template if needed. Include Page related values via {stringTags}. Textformatters applicable. Useful for concatenation of properties and field values, wrapped in any markup. Output hookable.'),
 			'author' => 'kixe',
-			'icon' => 'code'
+			'icon' => 'code',
+			'href' => 'https://github.com/kixe/FieldtypeMarkup'
 			);
 	}
 
