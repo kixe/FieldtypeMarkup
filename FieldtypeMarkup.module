@@ -5,14 +5,14 @@
  *
  * @author kixe (Christoph Thelen) 2016-06-20
  * @license Licensed under GNU/GPL v3
- * @link http://processwire.com/talk
+ * @link https://github.com/kixe/FieldtypeMarkup
  *
  * ProcessWire 3.x 
  * Copyright (C) 2016 by Ryan Cramer 
  * Licensed under GNU/GPL v2, see LICENSE.TXT
  * 
  * http://processwire.com
- * @version 1.0.9
+ * @version 1.1.0
  * @since 1.0.1 formatted markup available as field value - 2016-07-29
  * @since 1.0.2 added wirePopulateStringTags() - 2017-07-11
  * @since 1.0.3 convert nbsp and other UTF-8 encoded stuff to simple spaces 217-07-27
@@ -22,6 +22,7 @@
  * @since 1.0.7 fixed bug replacing description Label other fieldtypes 2018-04-15
  * @since 1.0.8 displaying multilanguage description as description 2018-04-15
  * @since 1.0.9 added fallback to default language markup (description) 2018-08-03
+ * @since 1.1.0 added processInput hook to modify whatever if page is saved 2020-01-18
  *
  */
 
@@ -30,7 +31,7 @@ class FieldtypeMarkup extends Fieldtype {
 	public static function getModuleInfo() {
 		return array(
 			'title' => __('Fieldtype Markup'),
-			'version' => 109,
+			'version' => 110,
 			'summary' => __('Fieldtype renders runtime markup. Define output in field settings. Overwrite via template if needed. Include Page related values via {stringTags}. Textformatters applicable. Useful for concatenation of properties and field values, wrapped in any markup. Output hookable.'),
 			'author' => 'kixe',
 			'icon' => 'code',
@@ -85,7 +86,12 @@ class FieldtypeMarkup extends Fieldtype {
 			$inputfield->icon = $field->icon? $field->icon:'info-circle';
 			$field->label = ' ';
 		}
-		$this->addHookAfter('InputfieldMarkup::getConfigInputfields', function($event) {
+		$options = array(
+			'page' => $page, 
+			'field' => $field, 
+		);
+		$inputfield->addHook('processInput', $this, 'hookProcessInput', $options); 
+		$inputfield->addHookAfter('getConfigInputfields', function($event) {
 			$inputfields = $event->return;
 			$options = array(0,1,4); // open, closed, hidden
 			$collapsed = $inputfields->get('collapsed');
@@ -99,6 +105,20 @@ class FieldtypeMarkup extends Fieldtype {
 			foreach($skips as $name) $inputfields->remove($name); 
    			$event->return = $inputfields;
     	});
+		return $inputfield;
+	}
+
+	/**
+	 * hookable function to process whatever
+	 *
+	 */
+	public function ___hookProcessInput($event) {
+		/** @var InputfieldFile $inputfield */
+		$inputfield = $event->object; 	
+		/** @var Page $page */
+		$page = $event->options['page']; 
+		/** @var Field $field */
+		$field = $event->options['field'];
 		return $inputfield;
 	}
 
