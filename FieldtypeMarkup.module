@@ -1,4 +1,4 @@
-<?php
+<?php namespace ProcessWire;
 
 /**
  * ProcessWire Fieldtype which outputs markup as an Inputfield in the page editor.
@@ -12,7 +12,7 @@
  * Licensed under GNU/GPL v2, see LICENSE.TXT
  * 
  * http://processwire.com
- * @version 1.1.0
+ * @version 1.1.2
  * @since 1.0.1 formatted markup available as field value - 2016-07-29
  * @since 1.0.2 added wirePopulateStringTags() - 2017-07-11
  * @since 1.0.3 convert nbsp and other UTF-8 encoded stuff to simple spaces 217-07-27
@@ -23,6 +23,8 @@
  * @since 1.0.8 displaying multilanguage description as description 2018-04-15
  * @since 1.0.9 added fallback to default language markup (description) 2018-08-03
  * @since 1.1.0 added processInput hook to modify whatever if page is saved 2020-01-18
+ * @since 1.1.1 added ProcessWire namespace 2021-02-08
+ * @since 1.1.2 added option to use user tags `{user.field}` beside page tags in description field 2024-03-08
  *
  */
 
@@ -31,7 +33,7 @@ class FieldtypeMarkup extends Fieldtype {
 	public static function getModuleInfo() {
 		return array(
 			'title' => __('Fieldtype Markup'),
-			'version' => 110,
+			'version' => 112,
 			'summary' => __('Fieldtype renders runtime markup. Define output in field settings. Overwrite via template if needed. Include Page related values via {stringTags}. Textformatters applicable. Useful for concatenation of properties and field values, wrapped in any markup. Output hookable.'),
 			'author' => 'kixe',
 			'icon' => 'code',
@@ -86,6 +88,7 @@ class FieldtypeMarkup extends Fieldtype {
 			$inputfield->icon = $field->icon? $field->icon:'info-circle';
 			$field->label = ' ';
 		}
+		// add a processInput() function to InputfieldMarkup via hook
 		$options = array(
 			'page' => $page, 
 			'field' => $field, 
@@ -110,10 +113,12 @@ class FieldtypeMarkup extends Fieldtype {
 
 	/**
 	 * hookable function to process whatever
+	 * this hook has been hooked to InputfieldMarkup via getInputfield()
+	 * @see getInputfield()
 	 *
 	 */
 	public function ___hookProcessInput($event) {
-		/** @var InputfieldFile $inputfield */
+		/** @var InputfieldMarkup $inputfield */
 		$inputfield = $event->object; 	
 		/** @var Page $page */
 		$page = $event->options['page']; 
@@ -160,7 +165,14 @@ class FieldtypeMarkup extends Fieldtype {
 		}
 
 		// replace string tags {field}
-		$out = wirePopulateStringTags($value, $page);
+		if (strpos($value, '{user.') !== false) {
+			$value = wirePopulateStringTags($value, $page, ['removeNullTags' => false]);
+			$value = str_replace('{user.', '{', $value);
+			$out = wirePopulateStringTags($value, $this->wire('user'));
+		} else {
+			$out = wirePopulateStringTags($value, $page);	
+		}
+
 		return trim(preg_replace('/[\xC2\xA0\t\n\r\0\x0B]/u',' ', $out));
 	}
 
