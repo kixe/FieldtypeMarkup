@@ -12,7 +12,7 @@
  * Licensed under GNU/GPL v2, see LICENSE.TXT
  * 
  * http://processwire.com
- * @version 1.1.3
+ * @version 1.1.4
 
  * @since 1.0.1 formatted markup available as field value - 2016-07-29
  * @since 1.0.2 added wirePopulateStringTags() - 2017-07-11
@@ -26,7 +26,8 @@
  * @since 1.1.0 added processInput hook to modify whatever if page is saved 2020-01-18
  * @since 1.1.1 added ProcessWire namespace 2021-02-08
  * @since 1.1.2 added option to use user tags `{user.field}` beside page tags in description field 2024-03-08
- * @since 1.1.3 fixed bug deprecation warning using strlen(null) 2024-04-05
+ * @since 1.1.3 fixed bug: deprecation warning using strlen(null) 2024-04-05
+ * @since 1.1.4 fixed bug: textformatters applied twice (Fieldtype, Inputfield) 2024-10-27
  *
  */
 
@@ -35,7 +36,7 @@ class FieldtypeMarkup extends Fieldtype {
 	public static function getModuleInfo() {
 		return array(
 			'title' => __('Fieldtype Markup'),
-			'version' => 113,
+			'version' => 114,
 			'summary' => __('Fieldtype renders runtime markup. Define output in field settings. Overwrite via template if needed. Include Page related values via {stringTags}. Textformatters applicable. Useful for concatenation of properties and field values, wrapped in any markup. Output hookable.'),
 			'author' => 'kixe',
 			'icon' => 'code',
@@ -53,7 +54,11 @@ class FieldtypeMarkup extends Fieldtype {
 			foreach($this->languageSupport->otherLanguagePageIDs as $languageID) $this->set("dateFormat$languageID", '');
 		}
 		$this->addHookBefore('InputfieldMarkup::render', function (HookEvent $e) {
-			$e->object->description = '';
+			if ($e->object->hasClass('FieldtypeMarkup')) {
+				$e->object->textformatters = []; // already done here, prevent any textformatting
+				$e->object->description = ''; // field used for markup storage, could be implemented via Markup
+				$e->object->notes = ''; // could be implemented via Markup
+			}
 		});
 		$this->addHookAfter('ProcessField::buildEditForm', $this, 'hookAfterBuildEditForm');
 		$this->addHookBefore('ProcessField::buildEditFormContext', function($event) {
@@ -72,23 +77,28 @@ class FieldtypeMarkup extends Fieldtype {
 		$fieldtype = $this->fields->get((int) $this->input->get->id)->type;
 		if ($fieldtype instanceof FieldtypeMarkup) {
 			$form = $event->return;
-			$form->get('field_label')->description = $this->_('This is the label that appears above the Markup. If left blank, *nothing* will be used instead.');
+			$form->get('field_label')->description = $this->_('This is the label that appears above the markup. If left blank, *nothing* will be displayed instead.');
 
+			// setup field for 'description' is FieldtypeTextarea
 			$form->get('description')->label = 'Markup';		
-			$form->get('description')->description = $this->_('This is the Markup that appears in the page editor instead of an Inputfield. Use plain Text, HTML or any other Markup. Optionally enable Textformatters under the details tab in the field settings. Insert page properties surrounded with curled brackets.');
+			$form->get('description')->description = $this->_("This is the markup that appears in the page editor instead of an Inputfield. Use plain text, HTML or any other markup. Optionally enable Textformatters under the 'Details' tab in the field settings. Insert page properties as placeholders surrounded with curled brackets. Use placeholders like: {user.property} for current user properties.");
 			$form->get('description')->collapsed = Inputfield::collapsedNo;
 			$form->remove('notes');
+			$form->get('description')->notes = $this->_('If your markup text is plain HTML, you may not want to select any Text Formatters.');
+			$form->get('description')->detail = $this->_("'Description' and 'Notes' are not provided for this Fieldtype. If necessary, you can add them to the markup using the CSS classes 'description' and 'notes'.");
+			// $form->get('description')->notes = '';
 			$event->return = $form;
 		}
 	}
 
 	public function getInputfield(Page $page, Field $field) {
 		$inputfield = wire('modules')->get('InputfieldMarkup');
-		// $inputfield->description = null; // unset via hook in InputfieldMarkup::render()
+		$inputfield->addClass('FieldtypeMarkup');
 		// get raw value 
 		$value = $this->loadPageField($page, $field);
-		// we want the formatted value here
+		// we want the formatted value here and disable inputfield formatting via hook in InputfieldMarkup::render()
 		$inputfield->markupText = $this->formatValue($page, $field, $value);
+
 		if (!$field->label && $field->collapsed == 1) {
 			$inputfield->icon = $field->icon? $field->icon:'info-circle';
 			$field->label = ' ';
@@ -98,6 +108,11 @@ class FieldtypeMarkup extends Fieldtype {
 			'page' => $page, 
 			'field' => $field, 
 		);
+		/* show default InputfieldMarkup settings
+		$inputfield->addHookBefore('getConfigInputfields', function($event) {
+			$event->object->hasFieldtype = false;
+		});
+		*/
 		$inputfield->addHook('processInput', $this, 'hookProcessInput', $options); 
 		$inputfield->addHookAfter('getConfigInputfields', function($event) {
 			$inputfields = $event->return;
@@ -177,7 +192,6 @@ class FieldtypeMarkup extends Fieldtype {
 		} else {
 			$out = wirePopulateStringTags($value, $page);	
 		}
-
 		return trim(preg_replace('/[\xC2\xA0\t\n\r\0\x0B]/u',' ', $out));
 	}
 
@@ -250,7 +264,7 @@ class FieldtypeMarkup extends Fieldtype {
 
 		$inputfields = parent::___getConfigInputfields($field);
 		$f = $this->modules->get('InputfieldAsmSelect');
-		$f->attr('id+name', 'textformatters');
+		$f->attr('id+name', 'textformatters'); // similar to settings of InputfieldMarkup
 		$f->attr('value', $field->textformatters); 
 		$f->label = $this->_('Text Formatters');
 		foreach($this->modules->find("className^=Textformatter") as $textformatter) {
